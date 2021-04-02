@@ -36,7 +36,7 @@ numhex<-clean%>%
 
 clean2<-clean%>%
   right_join(numhex)%>%
-  mutate(size=ifelse(DBH<=5, "S", ifelse(DBH>=25, "L", "drop")))%>%
+  mutate(size=ifelse(DBH<=5, "S", ifelse(DBH>=20, "L", "drop")))%>%
   filter(size!="drop")
 
 #total by each grade
@@ -46,6 +46,9 @@ abund<-clean2%>%
   mutate(rank=rank(-abund, ties.method = "first"))%>%
   mutate(name=ifelse(rank<6, SPP2, ""))
 
+test<-abund%>%
+  group_by(holc_grade, size)%>%
+  summarize(n=sum(abund))
 
 ggplot(data=abund, aes(x=rank, y=abund, label=name))+
   geom_point()+
@@ -53,22 +56,22 @@ ggplot(data=abund, aes(x=rank, y=abund, label=name))+
   theme(legend.position = "none")+
   geom_text_repel(max.overlaps = 100)
 
-#average by each grade
-mabund<-clean%>%
-  group_by(holc_grade, holc_id, SPP2)%>%
-  summarize(abund=sum(present))%>%
-  group_by(holc_grade, SPP2)%>%
-  summarize(mabund=mean(abund))%>%
-  mutate(rank=rank(-mabund, ties.method = "first"))%>%
-  mutate(name=ifelse(rank<6, SPP2, ""))%>%
-  mutate(sp=ifelse(mabund>70, SPP2, ""))
-
-
-ggplot(data=mabund, aes(x=rank, y=mabund, label=name, color=sp))+
-  geom_point()+
-  facet_wrap(~holc_grade)+
-  geom_text_repel()+
-  theme(legend.position = "none")
+# #average by each grade
+# mabund<-clean%>%
+#   group_by(holc_grade, holc_id, SPP2)%>%
+#   summarize(abund=sum(present))%>%
+#   group_by(holc_grade, SPP2)%>%
+#   summarize(mabund=mean(abund))%>%
+#   mutate(rank=rank(-mabund, ties.method = "first"))%>%
+#   mutate(name=ifelse(rank<6, SPP2, ""))%>%
+#   mutate(sp=ifelse(mabund>70, SPP2, ""))
+# 
+# 
+# ggplot(data=mabund, aes(x=rank, y=mabund, label=name, color=sp))+
+#   geom_point()+
+#   facet_wrap(~holc_grade)+
+#   geom_text_repel()+
+#   theme(legend.position = "none")
 
 ##doing beta diversity stuff
 nbid<-clean%>%
@@ -76,26 +79,39 @@ nbid<-clean%>%
   group_by(holc_grade, holc_id, SPP2)%>%
   summarize(abund=sum(present))
 
-##step 1 do an NMDS
+nbid_large<-clean2%>%
+  right_join(numhex)%>%
+  filter(size=="L")%>%
+  group_by(holc_grade, holc_id, SPP2)%>%
+  summarize(abund=sum(present))
 
-nbid_wide<-nbid%>%
+nbid_small<-clean2%>%
+  right_join(numhex)%>%
+  filter(size=="S")%>%
+  group_by(holc_grade, holc_id, SPP2)%>%
+  summarize(abund=sum(present))
+
+##step 1 do an NMDS
+#change the numbers and dataset for each
+
+nbid_wide<-nbid_small%>%
   spread(SPP2, abund, fill=0)
 
 #do the NMDS  
 plots<-nbid_wide[,1:2]
-mds<-metaMDS(nbid_wide[,3:230], autotransform=FALSE, shrink=FALSE) 
-mds #stress 0.09
+mds<-metaMDS(nbid_wide[,3:200], autotransform=FALSE, shrink=FALSE) 
+mds #stress all 0.09; stress large 0.11; stress small 0.14
 
 # are there differences in communities by landuse
-adonis(nbid_wide[,3:230]~as.factor(holc_grade), nbid_wide)
-#not sig diff communities by HOLC_Grade
+adonis(nbid_wide[,3:200]~as.factor(holc_grade), nbid_wide)
+#not sig diff communities by HOLC_Grade; large trees, big sig diff holc grade# sig diff small trees
 
 #test whether Landuse have differences in dispersion
-dist<-vegdist(nbid_wide[,3:230])
+dist<-vegdist(nbid_wide[,3:200])
 betadisp<-betadisper(dist,nbid_wide$holc_grade,type="centroid")
 betadisp
 permutest(betadisp)
-#not sig diff dispersion by holc_grade
+#not sig diff dispersion by holc_grade, no sig diff large trees; #no sig diff large trees
 
 scores <- data.frame(scores(mds, display="sites"))  # Extracts NMDS scores for each block
 scores2<- cbind(plots, scores) # binds the NMDS scores landuse plot info
@@ -107,11 +123,12 @@ ggplot(scores2, aes(x=NMDS1, y=NMDS2, color=holc_grade))+
   scale_color_manual(name="HOLC Grade", values = c("olivedrab3", "lightcyan3", "khaki", "indianred3"))+
   xlab("NMDS Axis 1")+
   ylab("NMDS Axis 2")+
-  annotate("text", x=1.5, y=-1, label="stress = 0.08", size=4)+
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())  
+  annotate("text", x=0.9, y=-1, label="stress = 0.14", size=4)+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  ggtitle("Small trees (<5 DBH")
 
 #doing rac_difference
-racdiff<-RAC_difference(df=nbid, species.var = "SPP2", abundance.var = "abund", replicate.var = "holc_id", treatment.var = "holc_grade")
+racdiff<-RAC_difference(df=nbid_small, species.var = "SPP2", abundance.var = "abund", replicate.var = "holc_id", treatment.var = "holc_grade")
 
 racdiff_sub<-racdiff%>%
   filter(holc_grade==holc_grade2)
@@ -119,38 +136,42 @@ racdiff_sub<-racdiff%>%
 #do holc grades differ in species differences?
 summary(aov(species_diff~holc_grade, data=racdiff_sub))
 #yes, sig diff in species differences
+#no, no sp. diff for large trees
+#sig sp diff small trees
 TukeyHSD(aov(species_diff~holc_grade, data=racdiff_sub))
 
 #do holc grades differ in rank differences?
 summary(aov(rank_diff~holc_grade, data=racdiff_sub))
-#yes, sig diff in rank differences
+#yes, sig diff in rank differences, #yes sig RAC differences for large trees
+#sig diff small trees
 TukeyHSD(aov(rank_diff~holc_grade, data=racdiff_sub))
 
 #do holc grades differ in richness differences?
 summary(aov(abs(richness_diff)~holc_grade, data=racdiff_sub))
-#no, sig diff in rich differences
-
+#no, sig diff in rich differences; no diff large trees, #no diff richness small trees
 
 #do holc grades differ in evenness differences?
 summary(aov(abs(evenness_diff)~holc_grade, data=racdiff_sub))
-#no,  sig diff in even differences
-
+#no,  sig diff in even differences, #sig diff evenness large; no diff snall
+TukeyHSD(aov(abs(evenness_diff)~holc_grade, data=racdiff_sub))
 
 toplot<-racdiff_sub%>%
   gather(measure, value, richness_diff:species_diff)%>%
   group_by(holc_grade, measure)%>%
   summarize(mean=mean(abs(value)), sd=sd(value), n=length(value))%>%
   mutate(se=sd/sqrt(n))%>%
-  mutate(text=ifelse(measure=="richness_diff"|measure=="evenness_diff", "",
-              ifelse(measure=="rank_diff"&holc_grade=="A"|measure=="species_diff"&holc_grade=="A", "AB", 
-       ifelse(measure=="rank_diff"&holc_grade=="B"|measure=="species_diff"&holc_grade=="C", "A", "B"))))
+  mutate(text=ifelse(measure=="evenness_diff"|measure=="richness_diff", "",
+              ifelse(measure=="species_diff"&holc_grade=="A", "AB", 
+       ifelse(measure=="rank_diff"&holc_grade=="D"|measure=="species_diff"&holc_grade=="D", "B", "A"))))
 
 ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
   geom_bar(stat="identity")+
   scale_fill_manual(name="HOLC Grade", values = c("olivedrab3", "lightcyan3", "khaki", "indianred3"))+
   geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2)+
   facet_wrap(~measure)+
-  geom_text(aes(y=(mean+se)+0.1))
+  geom_text(aes(y=(mean+se)+0.1))+
+  ggtitle("Small trees (<5 DBH")
+
 
 ####
 ##doing this to compare neighborhoods
@@ -180,16 +201,18 @@ toplot2<-racdiff_comp%>%
   gather(measure, value, richness_diff:species_diff)%>%
   group_by(comp, measure)%>%
   summarize(mean=mean(abs(value)), sd=sd(value), n=length(value))%>%
-  mutate(se=sd/sqrt(n))%>%
-  mutate(text=ifelse(measure=="richness_diff"|measure=="species_diff", "", 
-              ifelse(measure=="evenness_diff"&comp=="B-D"|measure=="rank_diff"&comp=="B-C"|measure=="evenness_diff"&comp=="C-D", "A",
-              ifelse(measure=="evenness_diff"&comp=="A-B"|measure=="evenness_diff"&comp=="A-C"|measure=="evenness_diff"&comp=="B-C"|measure=="rank_diff"&comp=="C-D", "B", "AB"))))
+  mutate(se=sd/sqrt(n))
+# %>%
+#   mutate(text=ifelse(measure=="richness_diff"|measure=="species_diff", "", 
+#               ifelse(measure=="evenness_diff"&comp=="B-D"|measure=="rank_diff"&comp=="B-C"|measure=="evenness_diff"&comp=="C-D", "A",
+#               ifelse(measure=="evenness_diff"&comp=="A-B"|measure=="evenness_diff"&comp=="A-C"|measure=="evenness_diff"&comp=="B-C"|measure=="rank_diff"&comp=="C-D", "B", "AB"))))
 
-ggplot(data=toplot2, aes(x=comp, y=mean, label=text))+
+ggplot(data=toplot2, aes(x=comp, y=mean))+#, label=text
   geom_bar(stat="identity")+
   geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2)+
   facet_wrap(~measure)+
-  geom_text(aes(y=(mean+se)+0.05))
+  ggtitle("Large trees (>20 DBH")
+  #geom_text(aes(y=(mean+se)+0.05))
 
 ####no re-doing this but with same number of hexes per NB - need to select 5 hexes randomly from each nb
 
