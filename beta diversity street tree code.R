@@ -4,7 +4,7 @@ library(ggrepel)
 library(vegan)
 
 ##do evenness in codyn
-
+#test.
 theme_set(theme_bw(12))
 
 setwd("C:\\Users\\mavolio2\\Dropbox\\BES Research\\redlining project")
