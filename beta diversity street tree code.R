@@ -3,7 +3,7 @@ library(tidyverse)
 library(ggrepel)
 library(vegan)
 
-##do evenness in codyn - notes
+##do evenness in codyn
 
 theme_set(theme_bw(12))
 
