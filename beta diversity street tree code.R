@@ -36,7 +36,7 @@ numhex<-clean%>%
 
 clean2<-clean%>%
   right_join(numhex)%>%
-  mutate(size=ifelse(DBH<=5, "S", ifelse(DBH>=20, "L", "drop")))%>%
+  mutate(size=ifelse(DBH<=5, "Small", ifelse(DBH>=20, "Large", "drop")))%>%
   filter(size!="drop")
 
 #total by each grade
@@ -44,17 +44,22 @@ abund<-clean2%>%
   group_by(holc_grade, size, SPP2)%>%
   summarize(abund=sum(present))%>%
   mutate(rank=rank(-abund, ties.method = "first"))%>%
-  mutate(name=ifelse(rank<6, SPP2, ""))
+  mutate(name=ifelse(rank<6, SPP2, ""))%>%
+  mutate(plotname=ifelse(name=="Acer rubrum", "A. rubrum", ifelse(name=="Liriodendron tulipifera", "L. tulipifera", ifelse(name=="Ulmus americana", "U. americana", ifelse(name=="Zelkova serrata", "Z. serrata", ifelse(name=="Cornus florida", "C. florida", ifelse(name=="Cupressocyparis leylandii", "C. lylandii", ifelse(name=="Lagerstroemia indica", "L. indica", ifelse(name=="Prunus spp.", "Prunus sp.", ifelse(name=="Acer saccharinum", "A. saccharinum", ifelse(name=="Tilia cordata", "T. cordata", ifelse(name=="Cercis canadensis", "C. canadensis", ifelse(name=="Gleditsia triacanthos", "G. triacanthos", ifelse(name=="Pyrus calleryana", "P. calleryana", ifelse(name=="Quercus palustris", "Q. palustris", ifelse(name=="Platanus x acerifolia", "P. x acerifolia", ""))))))))))))))))
 
-test<-abund%>%
-  group_by(holc_grade, size)%>%
-  summarize(n=sum(abund))
 
-ggplot(data=abund, aes(x=rank, y=abund, label=name))+
-  geom_point()+
+rac<-
+  ggplot(data=abund, aes(x=rank, y=abund, label=plotname))+
+  geom_point(size=1)+
+  geom_line()+
   facet_grid(size~holc_grade, scales="free")+
+  xlab("Rank")+
+  ylab("Number of Trees")+
   theme(legend.position = "none")+
-  geom_text_repel(max.overlaps = 100)
+  geom_text_repel(max.overlaps = 50, size=2.5, nudge_x=15)+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+ggsave("RAC_figure.pdf", rac, units="mm", width=200, dpi=300)
 
 # #average by each grade
 # mabund<-clean%>%
@@ -81,97 +86,220 @@ nbid<-clean%>%
 
 nbid_large<-clean2%>%
   right_join(numhex)%>%
-  filter(size=="L")%>%
+  filter(size=="Large")%>%
   group_by(holc_grade, holc_id, SPP2)%>%
   summarize(abund=sum(present))
 
 nbid_small<-clean2%>%
   right_join(numhex)%>%
-  filter(size=="S")%>%
+  filter(size=="Small")%>%
   group_by(holc_grade, holc_id, SPP2)%>%
   summarize(abund=sum(present))
 
 ##step 1 do an NMDS
 #change the numbers and dataset for each
 
-nbid_wide<-nbid_small%>%
+nbid_wides<-nbid_small%>%
   spread(SPP2, abund, fill=0)
 
 #do the NMDS  
-plots<-nbid_wide[,1:2]
-mds<-metaMDS(nbid_wide[,3:200], autotransform=FALSE, shrink=FALSE) 
-mds #stress all 0.09; stress large 0.11; stress small 0.14
+plots<-nbid_wides[,1:2]
+mdss<-metaMDS(nbid_wides[,3:200], autotransform=FALSE, shrink=FALSE) 
+mdss #stress all 0.09; stress large 0.11; stress small 0.14
 
 # are there differences in communities by landuse
-adonis(nbid_wide[,3:200]~as.factor(holc_grade), nbid_wide)
+adonis(nbid_wides[,3:200]~as.factor(holc_grade), nbid_wides)
 #not sig diff communities by HOLC_Grade; large trees, big sig diff holc grade# sig diff small trees
 
 #test whether Landuse have differences in dispersion
-dist<-vegdist(nbid_wide[,3:200])
-betadisp<-betadisper(dist,nbid_wide$holc_grade,type="centroid")
+dist<-vegdist(nbid_wides[,3:200])
+betadisp<-betadisper(dist,nbid_wides$holc_grade,type="centroid")
 betadisp
 permutest(betadisp)
 #not sig diff dispersion by holc_grade, no sig diff large trees; #no sig diff large trees
 
-scores <- data.frame(scores(mds, display="sites"))  # Extracts NMDS scores for each block
-scores2<- cbind(plots, scores) # binds the NMDS scores landuse plot info
+scores <- data.frame(scores(mdss, display="sites"))  # Extracts NMDS scores for each block
+scores2<- cbind(plots, scores)%>%
+  mutate(tree="Small")# binds the NMDS scores landuse plot info
+
+##large trees
+nbid_widel<-nbid_large%>%
+  spread(SPP2, abund, fill=0)
+
+#do the NMDS  
+plotsl<-nbid_widel[,1:2]
+mdsl<-metaMDS(nbid_widel[,3:125], autotransform=FALSE, shrink=FALSE) 
+mdsl #stress all 0.09; stress large 0.11; stress small 0.14
+
+# are there differences in communities by landuse
+adonis(nbid_widel[,3:125]~as.factor(holc_grade), nbid_widel)
+#not sig diff communities by HOLC_Grade; large trees, big sig diff holc grade# sig diff small trees
+
+#test whether Landuse have differences in dispersion
+dist<-vegdist(nbid_widel[,3:125])
+betadisp<-betadisper(dist,nbid_widel$holc_grade,type="centroid")
+betadisp
+permutest(betadisp)
+#not sig diff dispersion by holc_grade, no sig diff large trees; #no sig diff large trees
+
+scores3 <- data.frame(scores(mdsl, display="sites"))  # Extracts NMDS scores for each block
+scores4<- cbind(plotsl, scores3)%>%
+  mutate(tree="Large")%>%
+  bind_rows(scores2)
+
+stress<-data.frame(tree=c("Large","Small"),
+                      toplot=c("Stress = 0.11", "Stress= 0.14"))
 
 ##plotting this
-ggplot(scores2, aes(x=NMDS1, y=NMDS2, color=holc_grade))+
-  geom_point(size=4)+
+nmds<-
+  ggplot(scores4, aes(x=NMDS1, y=NMDS2))+
+  geom_point(size=3, aes(color=holc_grade))+
+  facet_wrap(~tree)+
   scale_shape_manual(name="Year", values=c(15,17,10,19))+
-  scale_color_manual(name="HOLC Grade", values = c("olivedrab3", "lightcyan3", "khaki", "indianred3"))+
+  scale_color_manual(name="HOLC\nGrade", values = c("olivedrab3", "lightcyan3", "khaki", "indianred3"))+
   xlab("NMDS Axis 1")+
   ylab("NMDS Axis 2")+
-  annotate("text", x=0.9, y=-1, label="stress = 0.14", size=4)+
+  stat_ellipse(size=1, aes(color=holc_grade))+
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
-  ggtitle("Small trees (<5 DBH")
+  geom_text(data=stress, aes(x=-1.5, y = -1.5, label = toplot), size=3)
 
-#doing rac_difference
-racdiff<-RAC_difference(df=nbid_small, species.var = "SPP2", abundance.var = "abund", replicate.var = "holc_id", treatment.var = "holc_grade")
 
-racdiff_sub<-racdiff%>%
-  filter(holc_grade==holc_grade2)
+ggsave("NMDS_Size.pdf", nmds, units="mm", width=150, dpi=300)
+
+
+###NMDS all NBs
+nbid<-clean%>%
+  right_join(numhex)%>%
+  group_by(holc_grade, holc_id, SPP2)%>%
+  summarize(abund=sum(present))
+
+nbid_wide<-nbid%>%
+  spread(SPP2, abund, fill=0)
+
+#do the NMDS  
+plots<-nbid_wide[,1:2]
+mds<-metaMDS(nbid_wide[,3:230], autotransform=FALSE, shrink=FALSE) 
+mds #stress all 0.09; stress large 0.11; stress small 0.14
+
+# are there differences in communities by landuse
+adonis(nbid_wide[,3:230]~as.factor(holc_grade), nbid_wide)
+#not sig diff communities by HOLC_Grade; large trees, big sig diff holc grade# sig diff small trees
+
+#test whether Landuse have differences in dispersion
+dist<-vegdist(nbid_widel[,3:230])
+betadisp<-betadisper(dist,nbid_widel$holc_grade,type="centroid")
+betadisp
+permutest(betadisp)
+#not sig diff dispersion by holc_grade, no sig diff large trees; #no sig diff large trees
+
+scores5 <- data.frame(scores(mds, display="sites"))  # Extracts NMDS scores for each block
+scores6<- cbind(plots, scores5)
+
+
+##plotting this
+nmds_all<-
+  ggplot(scores6, aes(x=NMDS1, y=NMDS2))+
+  geom_point(size=3, aes(color=holc_grade))+
+  scale_shape_manual(name="Year", values=c(15,17,10,19))+
+  scale_color_manual(name="HOLC\nGrade", values = c("olivedrab3", "lightcyan3", "khaki", "indianred3"))+
+  xlab("NMDS Axis 1")+
+  ylab("NMDS Axis 2")+
+  stat_ellipse(size=1, aes(color=holc_grade))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  annotate("text", label="Stress = 0.09", x=-1.8, y=-0.8, size=3)
+
+
+ggsave("NMDS_All.pdf", nmds_all, units="mm", width=120, dpi=300)
+
+
+
+#doing rac_difference for trees
+#small
+
+racdiffs<-RAC_difference(df=nbid_small, species.var = "SPP2", abundance.var = "abund", replicate.var = "holc_id", treatment.var = "holc_grade")
+
+racdiff_subs<-racdiffs%>%
+  filter(holc_grade==holc_grade2)%>%
+  mutate(tree="Small")
 
 #do holc grades differ in species differences?
-summary(aov(species_diff~holc_grade, data=racdiff_sub))
+summary(aov(species_diff~holc_grade, data=racdiff_subs))
 #yes, sig diff in species differences
 #no, no sp. diff for large trees
 #sig sp diff small trees
-TukeyHSD(aov(species_diff~holc_grade, data=racdiff_sub))
+TukeyHSD(aov(species_diff~holc_grade, data=racdiff_subs))
 
 #do holc grades differ in rank differences?
-summary(aov(rank_diff~holc_grade, data=racdiff_sub))
+summary(aov(rank_diff~holc_grade, data=racdiff_subs))
 #yes, sig diff in rank differences, #yes sig RAC differences for large trees
 #sig diff small trees
-TukeyHSD(aov(rank_diff~holc_grade, data=racdiff_sub))
+TukeyHSD(aov(rank_diff~holc_grade, data=racdiff_subs))
 
 #do holc grades differ in richness differences?
-summary(aov(abs(richness_diff)~holc_grade, data=racdiff_sub))
+summary(aov(abs(richness_diff)~holc_grade, data=racdiff_subs))
 #no, sig diff in rich differences; no diff large trees, #no diff richness small trees
 
 #do holc grades differ in evenness differences?
-summary(aov(abs(evenness_diff)~holc_grade, data=racdiff_sub))
+summary(aov(abs(evenness_diff)~holc_grade, data=racdiff_subs))
 #no,  sig diff in even differences, #sig diff evenness large; no diff snall
-TukeyHSD(aov(abs(evenness_diff)~holc_grade, data=racdiff_sub))
+TukeyHSD(aov(abs(evenness_diff)~holc_grade, data=racdiff_subs))
 
-toplot<-racdiff_sub%>%
-  gather(measure, value, richness_diff:species_diff)%>%
-  group_by(holc_grade, measure)%>%
+##large
+
+racdiffl<-RAC_difference(df=nbid_large, species.var = "SPP2", abundance.var = "abund", replicate.var = "holc_id", treatment.var = "holc_grade")
+
+racdiff_subl<-racdiffl%>%
+  filter(holc_grade==holc_grade2)%>%
+  mutate(tree="Large")
+
+#do holc grades differ in species differences?
+summary(aov(species_diff~holc_grade, data=racdiff_subl))
+#yes, sig diff in species differences
+#no, no sp. diff for large trees
+#sig sp diff small trees
+TukeyHSD(aov(species_diff~holc_grade, data=racdiff_subl))
+
+#do holc grades differ in rank differences?
+summary(aov(rank_diff~holc_grade, data=racdiff_subl))
+#yes, sig diff in rank differences, #yes sig RAC differences for large trees
+#sig diff small trees
+TukeyHSD(aov(rank_diff~holc_grade, data=racdiff_subl))
+
+#do holc grades differ in richness differences?
+summary(aov(abs(richness_diff)~holc_grade, data=racdiff_subl))
+#no, sig diff in rich differences; no diff large trees, #no diff richness small trees
+
+#do holc grades differ in evenness differences?
+summary(aov(abs(evenness_diff)~holc_grade, data=racdiff_subl))
+#no,  sig diff in even differences, #sig diff evenness large; no diff snall
+TukeyHSD(aov(abs(evenness_diff)~holc_grade, data=racdiff_subl))
+
+toplot<-racdiff_subs%>%
+  bind_rows(racdiff_subl)%>%
+  select(-richness_diff, -evenness_diff)%>%
+  gather(measure, value, rank_diff:species_diff)%>%
+  group_by(tree, holc_grade, measure)%>%
   summarize(mean=mean(abs(value)), sd=sd(value), n=length(value))%>%
   mutate(se=sd/sqrt(n))%>%
-  mutate(text=ifelse(measure=="evenness_diff"|measure=="richness_diff", "",
-              ifelse(measure=="species_diff"&holc_grade=="A", "AB", 
-       ifelse(measure=="rank_diff"&holc_grade=="D"|measure=="species_diff"&holc_grade=="D", "B", "A"))))
+  mutate(text=ifelse(measure=="species_diff"&holc_grade=="A"&tree=="Small"|measure=="rank_diff"&holc_grade=="A"&tree=="Large", "AB", 
+              ifelse(measure=="rank_diff"&holc_grade=="D"&tree=="Small"|measure=="species_diff"&holc_grade=="D"&tree=="Small"|measure=="rank_diff"&holc_grade=="B"&tree=="Large", "B",ifelse(tree=="Large"&measure=="species_diff", " ", "A"))))
 
+
+###graphing this
+parameter<-c(rank_diff="Species\nReordering", species_diff="Species\nDifferences")
+
+betadiv<-
 ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
+  facet_grid(tree~measure, labeller=labeller(measure = parameter))+
   geom_bar(stat="identity")+
   scale_fill_manual(name="HOLC Grade", values = c("olivedrab3", "lightcyan3", "khaki", "indianred3"))+
-  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2)+
-  facet_wrap(~measure)+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2, size=1)+
   geom_text(aes(y=(mean+se)+0.1))+
-  ggtitle("Small trees (<5 DBH")
+  xlab("HOLC Grade")+
+  ylab("Mean")+
+  theme(legend.position = "none")
 
+ggsave("BetaDiversity.pdf", betadiv, units = "mm", width=120, dpi=300)
 
 ####
 ##doing this to compare neighborhoods
@@ -259,14 +387,12 @@ toplot<-racdiff_sub%>%
                      ifelse(measure=="rank_diff"&holc_grade=="A"|measure=="species_diff"&holc_grade=="A", "AB", 
                             ifelse(measure=="rank_diff"&holc_grade=="B"|measure=="species_diff"&holc_grade=="C", "A", "B"))))
 
-ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
-  geom_bar(stat="identity")+
-  scale_fill_manual(name="HOLC Grade", values = c("olivedrab3", "lightcyan3", "khaki", "indianred3"))+
-  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2)+
-  facet_wrap(~measure)+
-  geom_text(aes(y=(mean+se)+0.1))
 
-####
+
+
+#####
+#####NOT DOING THIS
+#####
 ##doing this to compare neighborhoods
 racdiff_comp<-racdiff%>%
   filter(holc_grade!=holc_grade2)%>%
