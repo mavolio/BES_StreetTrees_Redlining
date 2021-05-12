@@ -2,6 +2,10 @@ library(codyn)
 library(tidyverse)
 library(ggrepel)
 library(vegan)
+library(gridExtra)
+library(grid)
+
+#export all as JPEG.
 
 ##do evenness in codyn
 #test.
@@ -52,14 +56,27 @@ rac<-
   ggplot(data=abund, aes(x=rank, y=abund, label=plotname))+
   geom_point(size=1)+
   geom_line()+
-  facet_grid(size~holc_grade, scales="free")+
+  facet_grid(holc_grade~size, scales="free")+
   xlab("Rank")+
   ylab("Number of Trees")+
   theme(legend.position = "none")+
   geom_text_repel(max.overlaps = 50, size=2.5, nudge_x=15)+
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
-ggsave("RAC_figure.pdf", rac, units="mm", width=200, dpi=300)
+g <- ggplot_gtable(ggplot_build(rac))
+strip_both <- which(grepl('strip-', g$layout$name))
+fills <- c("gray","gray","olivedrab3", "lightcyan3", "khaki", "indianred3")
+k <- 1
+
+for (i in strip_both) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+
+ggsave("RAC_figure.jpeg", units="mm", width=100, height=250, dpi=300)
 
 # #average by each grade
 # mabund<-clean%>%
@@ -151,6 +168,7 @@ stress<-data.frame(tree=c("Large","Small"),
                       toplot=c("Stress = 0.11", "Stress= 0.14"))
 
 ##plotting this
+#put figure legend on the bottom
 nmds<-
   ggplot(scores4, aes(x=NMDS1, y=NMDS2))+
   geom_point(size=3, aes(color=holc_grade))+
@@ -164,7 +182,7 @@ nmds<-
   geom_text(data=stress, aes(x=-1.5, y = -1.5, label = toplot), size=3)
 
 
-ggsave("NMDS_Size.pdf", nmds, units="mm", width=150, dpi=300)
+#ggsave("NMDS_Size.pdf", nmds, units="mm", width=150, dpi=300)
 
 
 ###NMDS all NBs
@@ -209,7 +227,7 @@ nmds_all<-
   annotate("text", label="Stress = 0.09", x=-1.8, y=-0.8, size=3)
 
 
-ggsave("NMDS_All.pdf", nmds_all, units="mm", width=120, dpi=300)
+ggsave("NMDS_All_AppendixFig.jpeg", nmds_all, units="mm", width=120, dpi=300)
 
 
 
@@ -281,8 +299,8 @@ toplot<-racdiff_subs%>%
   group_by(tree, holc_grade, measure)%>%
   summarize(mean=mean(abs(value)), sd=sd(value), n=length(value))%>%
   mutate(se=sd/sqrt(n))%>%
-  mutate(text=ifelse(measure=="species_diff"&holc_grade=="A"&tree=="Small"|measure=="rank_diff"&holc_grade=="A"&tree=="Large", "AB", 
-              ifelse(measure=="rank_diff"&holc_grade=="D"&tree=="Small"|measure=="species_diff"&holc_grade=="D"&tree=="Small"|measure=="rank_diff"&holc_grade=="B"&tree=="Large", "B",ifelse(tree=="Large"&measure=="species_diff", " ", "A"))))
+  mutate(text=ifelse(measure=="species_diff"&holc_grade=="A"&tree=="Small"|measure=="rank_diff"&holc_grade=="A"&tree=="Large", "xy", 
+              ifelse(measure=="rank_diff"&holc_grade=="D"&tree=="Small"|measure=="species_diff"&holc_grade=="D"&tree=="Small"|measure=="rank_diff"&holc_grade=="B"&tree=="Large", "y",ifelse(tree=="Large"&measure=="species_diff", " ", "x"))))
 
 
 ###graphing this
@@ -290,7 +308,7 @@ parameter<-c(rank_diff="Species\nReordering", species_diff="Species\nDifferences
 
 betadiv<-
 ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
-  facet_grid(tree~measure, labeller=labeller(measure = parameter))+
+  facet_grid(measure~tree, labeller=labeller(measure = parameter))+
   geom_bar(stat="identity")+
   scale_fill_manual(name="HOLC Grade", values = c("olivedrab3", "lightcyan3", "khaki", "indianred3"))+
   geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2, size=1)+
@@ -299,7 +317,9 @@ ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
   ylab("Mean")+
   theme(legend.position = "none")
 
-ggsave("BetaDiversity.pdf", betadiv, units = "mm", width=120, dpi=300)
+fig5<-grid.arrange(nmds, betadiv, ncol=1)
+
+ggsave("Fig5.jpeg", fig5, units = "mm", width=120, height=200, dpi=300)
 
 ####
 ##doing this to compare neighborhoods
