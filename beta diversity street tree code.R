@@ -204,14 +204,18 @@ adonis(nbid_wide[,3:230]~as.factor(holc_grade), nbid_wide)
 #not sig diff communities by HOLC_Grade; large trees, big sig diff holc grade# sig diff small trees
 
 #test whether Landuse have differences in dispersion
-dist<-vegdist(nbid_widel[,3:230])
-betadisp<-betadisper(dist,nbid_widel$holc_grade,type="centroid")
+dist<-vegdist(nbid_wide[,3:230])
+betadisp<-betadisper(dist,nbid_wide$holc_grade,type="centroid")
 betadisp
 permutest(betadisp)
 #not sig diff dispersion by holc_grade, no sig diff large trees; #no sig diff large trees
 
 scores5 <- data.frame(scores(mds, display="sites"))  # Extracts NMDS scores for each block
 scores6<- cbind(plots, scores5)
+
+#adjusting p-values for all
+p<-c(0.912, 0.059, 0.015, 0.484, 0.001, 0.464)
+p.adjust(p, "BH")
 
 
 ##plotting this
@@ -292,6 +296,14 @@ summary(aov(abs(evenness_diff)~holc_grade, data=racdiff_subl))
 #no,  sig diff in even differences, #sig diff evenness large; no diff snall
 TukeyHSD(aov(abs(evenness_diff)~holc_grade, data=racdiff_subl))
 
+###doing stats all at once.
+racdiff_sub<-racdiff_subs%>%
+  bind_rows(racdiff_subl)%>%
+  gather(measure, value, richness_diff:species_diff)%>%
+  group_by(measure, tree)%>%
+  summarize(pval=summary(aov(value~holc_grade))[[1]][["Pr(>F)"]][1])%>%
+  mutate(pad=p.adjust(pval, method = "BH"))
+
 toplot<-racdiff_subs%>%
   bind_rows(racdiff_subl)%>%
   select(-richness_diff, -evenness_diff)%>%
@@ -304,7 +316,7 @@ toplot<-racdiff_subs%>%
 
 
 ###graphing this
-parameter<-c(rank_diff="Species\nReordering", species_diff="Species\nDifferences")
+parameter<-c(rank_diff="Species\nReordering", species_diff="Species\nTurnover")
 
 betadiv<-
 ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
@@ -317,9 +329,9 @@ ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
   ylab("Mean")+
   theme(legend.position = "none")
 
-fig5<-grid.arrange(nmds, betadiv, ncol=1)
+fig4<-grid.arrange(nmds, betadiv, ncol=1)
 
-ggsave("Fig5.jpeg", fig5, units = "mm", width=120, height=200, dpi=300)
+ggsave("Fig4.jpeg", fig5, units = "mm", width=120, height=200, dpi=300)
 
 ####
 ##doing this to compare neighborhoods
