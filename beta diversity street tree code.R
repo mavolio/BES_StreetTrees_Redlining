@@ -40,7 +40,7 @@ numhex<-clean%>%
 
 clean2<-clean%>%
   right_join(numhex)%>%
-  mutate(size=ifelse(DBH<=5, "Small", ifelse(DBH>=20, "Large", "drop")))%>%
+  mutate(size=ifelse(DBH<=5, "II. Small trees", ifelse(DBH>=20, "I. Large trees", "drop")))%>%
   filter(size!="drop")
 
 #total by each grade
@@ -76,7 +76,7 @@ for (i in strip_both) {
 grid.draw(g)
 
 
-ggsave("RAC_figure.jpeg", units="mm", width=100, height=250, dpi=300)
+ggsave("RAC_figure.jpeg", units="mm", width=150, height=250, dpi=300)
 
 # #average by each grade
 # mabund<-clean%>%
@@ -103,13 +103,13 @@ nbid<-clean%>%
 
 nbid_large<-clean2%>%
   right_join(numhex)%>%
-  filter(size=="Large")%>%
+  filter(size=="I. Large trees")%>%
   group_by(holc_grade, holc_id, SPP2)%>%
   summarize(abund=sum(present))
 
 nbid_small<-clean2%>%
   right_join(numhex)%>%
-  filter(size=="Small")%>%
+  filter(size=="II. Small trees")%>%
   group_by(holc_grade, holc_id, SPP2)%>%
   summarize(abund=sum(present))
 
@@ -137,7 +137,7 @@ permutest(betadisp)
 
 scores <- data.frame(scores(mdss, display="sites"))  # Extracts NMDS scores for each block
 scores2<- cbind(plots, scores)%>%
-  mutate(tree="Small")# binds the NMDS scores landuse plot info
+  mutate(tree="II. Small trees")# binds the NMDS scores landuse plot info
 
 ##large trees
 nbid_widel<-nbid_large%>%
@@ -150,6 +150,7 @@ mdsl #stress all 0.09; stress large 0.11; stress small 0.14
 
 # are there differences in communities by landuse
 adonis(nbid_widel[,3:125]~as.factor(holc_grade), nbid_widel)
+
 #not sig diff communities by HOLC_Grade; large trees, big sig diff holc grade# sig diff small trees
 
 #test whether Landuse have differences in dispersion
@@ -161,11 +162,11 @@ permutest(betadisp)
 
 scores3 <- data.frame(scores(mdsl, display="sites"))  # Extracts NMDS scores for each block
 scores4<- cbind(plotsl, scores3)%>%
-  mutate(tree="Large")%>%
+  mutate(tree="I. Large trees")%>%
   bind_rows(scores2)
 
-stress<-data.frame(tree=c("Large","Small"),
-                      toplot=c("Stress = 0.11", "Stress= 0.14"))
+stress<-data.frame(tree=c("I. Large trees","II. Small trees"),
+                      toplot=c("Stress = 0.11", "Stress = 0.14"))
 
 ##plotting this
 #put figure legend on the bottom
@@ -242,7 +243,7 @@ racdiffs<-RAC_difference(df=nbid_small, species.var = "SPP2", abundance.var = "a
 
 racdiff_subs<-racdiffs%>%
   filter(holc_grade==holc_grade2)%>%
-  mutate(tree="Small")
+  mutate(tree="II. Small trees")
 
 #do holc grades differ in species differences?
 summary(aov(species_diff~holc_grade, data=racdiff_subs))
@@ -272,7 +273,7 @@ racdiffl<-RAC_difference(df=nbid_large, species.var = "SPP2", abundance.var = "a
 
 racdiff_subl<-racdiffl%>%
   filter(holc_grade==holc_grade2)%>%
-  mutate(tree="Large")
+  mutate(tree="I. Large trees")
 
 #do holc grades differ in species differences?
 summary(aov(species_diff~holc_grade, data=racdiff_subl))
@@ -311,8 +312,8 @@ toplot<-racdiff_subs%>%
   group_by(tree, holc_grade, measure)%>%
   summarize(mean=mean(abs(value)), sd=sd(value), n=length(value))%>%
   mutate(se=sd/sqrt(n))%>%
-  mutate(text=ifelse(measure=="species_diff"&holc_grade=="A"&tree=="Small"|measure=="rank_diff"&holc_grade=="A"&tree=="Large", "xy", 
-              ifelse(measure=="rank_diff"&holc_grade=="D"&tree=="Small"|measure=="species_diff"&holc_grade=="D"&tree=="Small"|measure=="rank_diff"&holc_grade=="B"&tree=="Large", "y",ifelse(tree=="Large"&measure=="species_diff", " ", "x"))))
+  mutate(text=ifelse(measure=="species_diff"&holc_grade=="A"&tree=="Small"|measure=="rank_diff"&holc_grade=="A"&tree=="I. Large trees", "xy", 
+              ifelse(measure=="rank_diff"&holc_grade=="D"&tree=="II. Small trees"|measure=="species_diff"&holc_grade=="D"&tree=="II. Small trees"|measure=="rank_diff"&holc_grade=="B"&tree=="I. Large trees", "y",ifelse(tree=="I. Large trees"&measure=="species_diff", " ", "x"))))
 
 
 ###graphing this
@@ -331,7 +332,7 @@ ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
 
 fig4<-grid.arrange(nmds, betadiv, ncol=1)
 
-ggsave("Fig4.jpeg", fig5, units = "mm", width=120, height=200, dpi=300)
+ggsave("Fig4.jpeg", fig4, units = "mm", width=120, height=200, dpi=300)
 
 ####
 ##doing this to compare neighborhoods
