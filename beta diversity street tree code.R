@@ -56,7 +56,7 @@ rac<-
   ggplot(data=abund, aes(x=rank, y=abund, label=plotname))+
   geom_point(size=1)+
   geom_line()+
-  facet_grid(holc_grade~size, scales="free")+
+  facet_grid(holc_grade~size)+
   xlab("Rank")+
   ylab("Number of Trees")+
   theme(legend.position = "none")+
@@ -121,7 +121,7 @@ nbid_wides<-nbid_small%>%
 
 #do the NMDS  
 plots<-nbid_wides[,1:2]
-mdss<-metaMDS(nbid_wides[,3:200], autotransform=FALSE, shrink=FALSE) 
+mdss<-metaMDS(nbid_wides[,3:200], distance="morisita", autotransform=FALSE, shrink=FALSE) 
 mdss #stress all 0.09; stress large 0.11; stress small 0.14
 
 # are there differences in communities by landuse
@@ -195,9 +195,9 @@ nbid<-clean%>%
 nbid_wide<-nbid%>%
   spread(SPP2, abund, fill=0)
 
-#do the NMDS  
+#do the NMDS  - results are the same for bray, morisita and horn distance matrices.
 plots<-nbid_wide[,1:2]
-mds<-metaMDS(nbid_wide[,3:230], autotransform=FALSE, shrink=FALSE) 
+mds<-metaMDS(nbid_wide[,3:230], autotransform=FALSE, shrink=FALSE, trymax=100) 
 mds #stress all 0.09; stress large 0.11; stress small 0.14
 
 # are there differences in communities by landuse
