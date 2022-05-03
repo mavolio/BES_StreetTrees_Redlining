@@ -5,7 +5,7 @@ library(vegan)
 library(gridExtra)
 library(grid)
 
-#export all as JPEG.
+#export all as TIFF
 
 ##do evenness in codyn
 #test.
@@ -76,7 +76,10 @@ for (i in strip_both) {
 grid.draw(g)
 
 
-ggsave("RAC_figure.jpeg", units="mm", width=150, height=250, dpi=300)
+ggsave("RAC_figure.tiff", units="px", width=5200, height=5600, dpi=800)
+
+tiff(filename="C:\\Users\\mavolio2\\Dropbox\\BES Research\\redlining project\\FigRAC.tif",height=5600,width=5200,units="px",res=800,compression="lzw")
+
 
 # #average by each grade
 # mabund<-clean%>%
@@ -96,10 +99,16 @@ ggsave("RAC_figure.jpeg", units="mm", width=150, height=250, dpi=300)
 #   theme(legend.position = "none")
 
 ##doing beta diversity stuff
-nbid<-clean%>%
+nbid<-clean2%>%
   right_join(numhex)%>%
   group_by(holc_grade, holc_id, SPP2)%>%
   summarize(abund=sum(present))
+
+nbid_n<-nbid%>%
+  select(holc_grade, holc_id) %>% 
+  unique()%>%
+  group_by(holc_grade)%>%
+  summarise(n=length(holc_id))
 
 nbid_large<-clean2%>%
   right_join(numhex)%>%
@@ -332,7 +341,9 @@ ggplot(data=toplot, aes(x=holc_grade, y=mean, fill=holc_grade, label=text))+
 
 fig4<-grid.arrange(nmds, betadiv, ncol=1)
 
-ggsave("Fig4.jpeg", fig4, units = "mm", width=120, height=200, dpi=300)
+ggsave("Fig4.tiff", fig4, units="px", width=5200, height=5600, dpi=800)
+
+tiff(filename="C:\\Users\\mavolio2\\Dropbox\\BES Research\\redlining project\\FigBeta.tif",height=5600,width=5200,units="px",res=800,compression="lzw")
 
 ####
 ##doing this to compare neighborhoods
