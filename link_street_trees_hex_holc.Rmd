@@ -1,0 +1,353 @@
+---
+title: "link_street_trees_hex_holc"
+author: "Dexter H. Locke, PhD"
+date: "`r format(Sys.time())`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+This *.Rmd does some of the initial data wrangling associated with a paper and analyses led by Karin Burhardt that analyzes street trees in Baltimore, MD and redlning.
+
+[KARIN CITATION HERE]
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 0 set up
+```{r}
+
+# Load libraries
+packs <-c(  'tidyverse' # cuz
+          , 'tidylog'   # prints out what was done in dplyr and tidyr; VERBOSE
+          , 'magrittr'  # for all of the the pipes
+          , 'sf'        # simple features spatial data suppport and analyses
+          , 'janitor'   # pipe-friendly cross tabulations
+          ,'tidycensus' # access to Census data in a tidy way
+          , 'mapview'   # quick webmaps
+          # , 'parzer'    # parses messy coordinates
+          , 'tmap'      # thematic mapper
+          , 'tictoc'    # timing things.
+          )
+
+# # check for all of the libraries
+if (length(setdiff(packs, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(packs, rownames(installed.packages())))
+}
+
+# load the libraries
+lapply(packs, library, character.only = TRUE) # raster masks many tidyverse function, be explicit!
+
+# HOLC custom colors
+holc_col <- c('#92BC6B', '#92C7C9', '#E7DC6B', '#E47D67')
+holc_col2<- c('#92BC6B', '#92C7C9', '#E7DC6B', '#E47D67', '#808080')
+
+
+d_path <- file.path(getwd(), 'input_data')
+```
+
+
+
+# 1 read in data
+## A HOLC polys 
+```{r}
+(rl <- st_read('../BHall/HOLC_X_Sites/HOLC_Baltimore/shp/HOLC_Baltimore.shp') %>% 
+    select(holc_id, holc_grade) %>% 
+    st_transform(crs = 4326) %>% 
+    st_cast('POLYGON') %>% 
+    mutate(neigh_area = st_area(.)) %>% 
+    rowid_to_column(var = 'poly_id'))
+
+```
+
+
+
+## B Baltimore street trees
+```{r}
+
+st <- st_read('../../evo/AFRI_local/input_data/bc_forestry_trees_12232020/bc_forestry_trees_12232020.shp', quiet = F) %>% 
+  st_transform(., crs = st_crs(rl)) 
+
+
+# exploratory cross-tabulations
+st %>% st_drop_geometry() %>% tabyl(SPACE_TYPE)
+st %>% st_drop_geometry() %>% tabyl(LOC_TYPE)
+st %>% st_drop_geometry() %>% tabyl(Side)
+st %>% st_drop_geometry() %>% tabyl(SPACE_TYPE, COMMON)
+  
+
+```
+
+
+
+## C get Baltimore City boundary
+```{r}
+
+census_api_key('db9b3481879b9e79eb8c86608656c3c8a8640bbb', install = TRUE, overwrite = TRUE)
+
+# set mapping options
+# this makes loading the data faster on the second/subsquent version.
+options(tigris_use_cache = TRUE)
+
+
+baci <- get_acs(state = 'MD',                 # Maryland
+                    county = c('Baltimore City'), # The CITY is its own county
+                    geography = 'county',   
+                    year = 2017,                 
+                    survey = 'acs5',             
+                    moe_level = 95, 
+                    variables = c(tot_pop = 'B02001_001'), 
+                    output = 'wide',
+                    geometry = TRUE) %>% 
+  st_transform(crs = st_crs(rl)) %>% # reproject to match HOLC polygons
+  rename(county = 'NAME')
+
+
+mapview(baci)
+
+# # write it out for cartography
+# baci %>% 
+#   st_write(., paste0(getwd(), '/output_data/city_limits_', Sys.Date(),'.shp'))
+```
+
+
+
+## D hexbins!
+### i make them
+```{r}
+# (rl %>% st_drop_geometry() %>% select(area) %>% min() -> min_holc_area)
+# (rl %>% st_bbox() %>% st_as_sfc() %>% st_as_sf() %>% 
+#   mutate(area = st_area(.),
+#          length = st_length(.)) -> bbox_dims)
+
+# sizes based on trial and error
+# cell_size <- 0.001 
+# cell_size <- 0.0011
+# cell_size <- 0.0012
+# cell_size <- 0.0013
+# cell_size <- 0.0014
+#cell_size <- 0.00145
+#cell_size <- 0.0015
+cell_size <- 0.002
+# cell_size <- 0.0005 # makes many smaller polygons
+
+
+rl %>%
+  st_make_grid(., cellsize = cell_size, square = FALSE,
+               #flat_topped = TRUE
+               ) %>% 
+  st_as_sf() -> hex
+
+# # do you want to check>
+# mapview(rl, zcol = 'holc_grade', col.region = holc_col) + 
+#   mapview(hex, alpha.regions = 0)
+```
+
+
+
+### ii filter to ensure they are within The City
+```{r}
+
+hex %<>% st_join(.
+                , baci
+                , left = FALSE
+                , join = st_within
+              ) 
+
+hex %>% mapview()
+
+
+```
+
+#### a how much area of BACI is holc (hex)?
+```{r}
+
+rl %>%
+  st_intersection(baci) %>%
+  mutate(clipped_area = as.numeric(st_area(.))) -> holc_in_baci_clipped
+
+mapview(holc_in_baci_clipped) + mapview(baci)
+
+baci %>%mutate(clipped_area = st_area(.)) |> pull(clipped_area) -> approx_baci_area
+
+
+round(100*(sum(holc_in_baci_clipped$clipped_area) / as.numeric(approx_baci_area)), 2)
+
+
+holc_in_baci_clipped |> 
+  group_by(holc_grade) |> 
+  summarise(area_x_grade = sum(clipped_area)
+            , pct_area = 100*(area_x_grade / approx_baci_area))
+
+```
+
+
+
+### iii join hexbins to holc polygons
+```{r}
+
+hex %>%
+  st_join(., rl,
+          left = TRUE,
+          join = st_within,
+          # largest = TRUE
+          ) %>% 
+  filter(!is.na(holc_id)) %>% 
+  rowid_to_column(var = 'hex_id') %>% 
+  mutate(hex_area = round(st_area(.)),
+         holc_id.hex_id = paste(holc_id, hex_id, sep = '.')) %>% 
+  # goal is to max trees per hex (therefore larger), but too big and the hexes per neigh shrinks
+  tidylog::filter(holc_id != 'D' & holc_id != 'C' & holc_id != 'B14' & holc_id != 'B22') -> hex_holc
+
+# save it out
+hex %>%
+  st_join(., rl,
+          left = TRUE,
+          join = st_within,
+          # largest = TRUE
+          ) %>%
+  filter(!is.na(holc_id)) %>% 
+  st_write(., paste0(getwd(), '/output_data/hex_', Sys.Date(),'.shp'))
+
+
+
+
+# rl %>% 
+#   #filter(holc_id == 'C4' | holc_id == 'C5') %>% 
+#   mapview(., zcol = 'holc_grade', col.region = holc_col) +
+#   mapview(hex_holc, alpha.region = 0, #lwd =2, 
+#         color = 'black')
+
+rl %>% filter(holc_id == 'D6' | holc_id == 'B22') %>% mapview(., zcol = 'holc_grade', col.region = holc_col)
+
+# rl %>% filter(holc_id == 'B14' | holc_id == 'B22') %>% mapview(., zcol = 'holc_grade', col.region = holc_col)
+
+# B16
+# rl %>% filter(holc_id == 'B6' | holc_id == 'B7' | holc_id == 'B16') %>% 
+#   mapview(., zcol = 'holc_grade', col.region = holc_col) + mapview(hex_holc)
+
+# # exploratory
+# rl %>% filter(holc_id == 'A2') %>% 
+#   mapview(., zcol = 'holc_grade', col.region = holc_col) + mapview(hex_holc)
+
+# hex_holc %>% 
+#   #filter(holc_id == 'C') %>% 
+#   filter(!is.na(holc_id)) %>% 
+#   mapview(., alpha.region = 0)
+```
+
+
+### iv join / filter street trees 
+```{r}
+
+st %>% 
+  st_join(., hex_holc, left = TRUE) %>% 
+  # st_join(., hmt, left = TRUE) %>% # old, from an exploratory analysis
+  filter(!is.na(holc_id.hex_id)) -> st_hex
+
+# a double check
+length(table(st_hex$holc_id))
+
+# # write it out for carto
+# hex %>%
+#   st_write(., paste0(getwd(), '/output_data/hex_', Sys.Date(),'.shp'))
+
+
+
+# # write it out
+# st_hex %>%
+#   st_drop_geometry() %>%
+#   write_csv(., paste0(getwd(), '/output_data/street_trees_Baltimore_w_HOLC_grades_HEX_', Sys.Date(),'.csv'))
+
+
+rl %>% st_cast('POLYGON') -> rl_single
+
+rl_single %>% st_drop_geometry() %>% tabyl(holc_id) %>% 
+  arrange(desc(n)) %>% head(15)
+```
+
+
+
+# 2 maps
+## A redlining polygons
+```{r}
+# TODO scale bar/text
+# TODO leader
+#rl %>% st_cast('POLYGON') %>% st_centroid() -> holc_pts # %>% mapview() 
+# tm_shape(holc_pts) + tm_dots(title = 'holc_id')
+
+rl %>% mutate(' ' = 'Outside Baltimore City') %>% tm_shape(.) + tm_polygons(' ', palette = 'gray') +
+st_intersection(rl, baci) %>% tm_shape(.) +
+  tm_polygons('holc_grade', palette = holc_col, title = 'HOLC Grade') + # 1937
+  tm_text('holc_id', size = .5, shadow = TRUE) +
+#rl %>% mutate(' ' = 'Outside Baltimore City') %>% tm_shape(.) + tm_polygons(' ', palette = 'gray') +
+tm_shape(baci) + tm_borders(col = 'black') + 
+  tm_layout('I.', #legend.stack = 'horizontal',
+            legend.title.size=.9,
+            legend.text.size = .75
+            # legend.bg.alpha = .5,
+            # legend.bg.color = 'white'
+            ) -> p1
+
+p1 # look
+
+tmap_save(p1, w = 1050*4, h = 450*4 , 'figures/p1_holc_city.png')
+```
+
+
+## B Hexes
+```{r}
+ex_poly <- rl %>% filter(holc_id == 'D1' | holc_id == 'C1' | holc_id == 'C3')
+tm_shape(ex_poly) + tm_polygons() + # sets extent
+  # tm_polygons('holc_grade', palette = holc_col[3:4], title = 'HOLC Grade') + 
+  # tm_text('holc_id', size = .5, shadow = TRUE)
+tm_shape(rl) + tm_polygons('holc_grade', palette = holc_col, legend.show = FALSE) + 
+  tm_text('holc_id', size = 3, col = 'black') +
+tm_shape(hex_holc) + tm_borders(col = 'black') + tm_layout('II.', title.bg.color = 'white') -> p2
+
+p2 # look
+
+tmap_save(p2, w = 1050*4, h = 450*4 , 'figures/p2_select_neighs.png')
+```
+
+
+## C street trees
+```{r}
+ex_hex_id_list <- c('C1.1538', 'C1.1547', 'C1.1553', 'C1.1546', 'C1.1537', 'C1.1542', 'C1.1533')
+
+mid <- 'C1.1542'
+ex_hex <- hex_holc %>% filter(holc_id.hex_id %in% ex_hex_id_list)
+
+ext <- ex_hex %>% filter(holc_id.hex_id == mid) %>% st_bbox() %>% st_as_sfc() %>% st_buffer(.0009)
+#tm_basemap('Esri.WorldImagery') +
+ex_hex %>% tm_shape(., bbox = ext) + tm_polygons(alpha = .5) +
+ex_hex %>% filter(holc_id.hex_id == mid ) %>% tm_shape(.) + tm_borders(col = 'red') +
+tm_shape(ex_hex) + tm_borders(col = 'black') +
+st_hex %>% filter(holc_id == 'C1') %>% tm_shape(.) + tm_dots(title = 'street trees') +
+  tm_layout('III', title.bg.color = 'white') -> p3
+
+
+p3 # look
+
+tmap_save(p3, w = 1050*4, h = 450*4 , 'figures/p3_select_hexs.png')
+```
+
+# End
+
+
+# save
+```{r eval=FALSE, include=FALSE}
+system.time(save.image(file = paste0('saved_sessions/link_street_trees_hex_holc_',
+                                     gsub('[[:punct:]]', '-', Sys.time()),
+                                     '.RData')))
+```
+
+
+# CITE your sources!!!
+```{r eval=FALSE, include=FALSE}
+lapply(packs, citation); rm(packs)
+sessionInfo()
+```
+
+Last Knit on `r format(Sys.time())`
